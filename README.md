@@ -1,34 +1,27 @@
 # 🔥 flutter_awesome_snackbar
 
-The most powerful, beautiful, and developer-friendly Flutter notification package.  
-**Pure Flutter — zero external dependencies.**  
-Everything you need from FlashX, plus haptics, scheduling, routing, history, grouping, path animations, and more — all built on Flutter's own APIs.
+The most powerful, beautiful, and developer-friendly Flutter notification package.
 
-[![pub.dev](https://img.shields.io/pub/v/flutter_awesome_snackbar.svg)](https://pub.dev/packages/flutter_awesome_snackbar)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-blue.svg)](https://flutter.dev)
-[![Dart 3](https://img.shields.io/badge/Dart-3.0%2B-blue.svg)](https://dart.dev)
-[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-green.svg)]()
-[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)]()
+**Pure Flutter — zero external dependencies.** Everything you need from a modern notification system, plus haptics, scheduling, routing, history, grouping, path animations, and more — all built on Flutter's own APIs.
 
 ---
 
 ## ✨ Why flutter_awesome_snackbar?
 
-| Feature | flutter_awesome_snackbar | FlashX | fluttertoast | another_flushbar | bot_toast |
-|---|:---:|:---:|:---:|:---:|:---:|
-| All platforms | ✅ | ✅ | ⚠️ Limited | ✅ | ✅ |
-| State mgmt. agnostic | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Queue system | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Priority queue | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Future tracking API | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Glassmorphism | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Built-in animations | ✅ 9 styles | ✅ 7 styles | ❌ | ⚠️ 2 styles | ⚠️ 3 styles |
-| Custom widget | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Gradient backgrounds | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Duplicate prevention | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Dismiss by ID | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Progress bar | ✅ | ✅ | ❌ | ✅ | ❌ |
+| Feature | flutter_awesome_snackbar | fluttertoast | another_flushbar | bot_toast | GetX Snackbar |
+| --- | --- | --- | --- | --- | --- |
+| All platforms | ✅ | ⚠️ Limited | ✅ | ✅ | ✅ |
+| State mgmt. agnostic | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Queue system | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Priority queue | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Future tracking API | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Glassmorphism | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Built-in animations | ✅ 9 styles | ❌ | ⚠️ 2 styles | ⚠️ 3 styles | ⚠️ Basic |
+| Custom widget | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Gradient backgrounds | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Duplicate prevention | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Dismiss by ID | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Progress bar | ✅ | ❌ | ✅ | ❌ | ✅ |
 | RTL support | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dart 3 / null-safe | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **★ Zero dependencies** | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -56,10 +49,12 @@ Everything you need from FlashX, plus haptics, scheduling, routing, history, gro
 ```yaml
 dependencies:
   flutter_awesome_snackbar: ^1.0.0
+
 ```
 
 ```sh
 flutter pub get
+
 ```
 
 ### 2. Initialize
@@ -80,6 +75,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
 ```
 
 ### 3. Show notifications
@@ -89,6 +85,7 @@ AwesomeSnackbar.success("Profile saved!");
 AwesomeSnackbar.error("Payment failed.");
 AwesomeSnackbar.warning("Weak internet connection.");
 AwesomeSnackbar.info("Version 2.0 is available.");
+
 ```
 
 Done. 🎉
@@ -99,10 +96,10 @@ Done. 🎉
 
 `flutter_awesome_snackbar` is built entirely on Flutter's own APIs:
 
-- **Haptic feedback** — Flutter's built-in `HapticFeedback` (`services` package)
-- **Glassmorphism** — `dart:ui`'s `ImageFilter.blur` + `BackdropFilter`
-- **Animations** — Flutter's `AnimationController`, `SlideTransition`, `FadeTransition`, etc.
-- **Overlay system** — Flutter's native `Overlay` + `OverlayEntry`
+* **Haptic feedback** — Flutter's built-in `HapticFeedback` (`services` package)
+* **Glassmorphism** — `dart:ui`'s `ImageFilter.blur` + `BackdropFilter`
+* **Animations** — Flutter's `AnimationController`, `SlideTransition`, `FadeTransition`, etc.
+* **Overlay system** — Flutter's native `Overlay` + `OverlayEntry`
 
 No `vibration`, `audioplayers`, `flutter_animate`, or any other third-party package is required.
 
@@ -121,6 +118,7 @@ AwesomeSnackbar.info("New update");
 final id = AwesomeSnackbar.loading("Uploading...");
 AwesomeSnackbar.dismissById(id);
 AwesomeSnackbar.dismissAll();
+
 ```
 
 ### Full control with AwesomeOptions
@@ -143,6 +141,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   onDismiss: () => print("dismissed"),
   dismissOnTap: false,
 ));
+
 ```
 
 ### Future tracking
@@ -154,6 +153,7 @@ await AwesomeSnackbar.future(
   success: "Upload complete! 🎉",
   error: "Upload failed. Please retry.",
 );
+
 ```
 
 Dynamic messages based on result:
@@ -165,6 +165,7 @@ await AwesomeSnackbar.future<User>(
   success: (user) => "Welcome back, ${user.name}!",
   error: (e) => "Error: ${e.toString()}",
 );
+
 ```
 
 ### Extension methods
@@ -184,6 +185,7 @@ uploadFile().flashFuture(
   success: (_) => "Done!",
   error: (e) => "Failed: $e",
 );
+
 ```
 
 ---
@@ -198,6 +200,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Saved!",
   haptic: AwesomeHaptic.success,  // uses Flutter's HapticFeedback
 ));
+
 ```
 
 Available: `none`, `light`, `medium`, `heavy`, `success`, `warning`, `error`, `vibrate`
@@ -208,6 +211,7 @@ Set globally:
 AwesomeSnackbar.configure(AwesomeConfig(
   defaultHaptic: AwesomeHaptic.light,
 ));
+
 ```
 
 ### Scheduling & delayed notifications
@@ -223,6 +227,7 @@ final sid = AwesomeSnackbar.schedule(
 
 // Cancel if no longer needed
 AwesomeSnackbar.cancelScheduled(sid);
+
 ```
 
 ### Tap-to-route
@@ -234,6 +239,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   routeName: "/order-tracking",
   dismissOnTap: true,
 ));
+
 ```
 
 ### Notification history
@@ -252,6 +258,7 @@ final unread = AwesomeHistory.instance.unreadCount;
 // Mark all read / clear
 AwesomeHistory.instance.markAllRead();
 AwesomeHistory.instance.clear();
+
 ```
 
 ### Grouped notifications
@@ -265,6 +272,7 @@ AwesomeSnackbar.show(AwesomeOptions(
 
 // Dismiss the entire group
 AwesomeSnackbar.dismissGroup("chat_alice");
+
 ```
 
 ### Custom path animation
@@ -277,6 +285,7 @@ AwesomeSnackbar.show(AwesomeOptions(
     ..moveTo(-200, 0)
     ..quadraticBezierTo(0, -150, 0, 0),
 ));
+
 ```
 
 ### Flip animation (3D card flip)
@@ -287,6 +296,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Card flip entrance",
   animation: AwesomeAnimation.flip,
 ));
+
 ```
 
 ---
@@ -312,6 +322,7 @@ AwesomeSnackbar.configure(AwesomeConfig(
   tapThroughEnabled: false,
   safeAreaInsets: true,
 ));
+
 ```
 
 ### Custom theme per notification
@@ -332,6 +343,7 @@ AwesomeSnackbar.show(AwesomeOptions(
     elevation: 8,
   ),
 ));
+
 ```
 
 ### Gradient background
@@ -353,6 +365,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   actionText: "Upgrade",
   onAction: () => openUpgradeScreen(),
 ));
+
 ```
 
 ### Glassmorphism (dart:ui — no external package)
@@ -363,12 +376,14 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Saved with glass effect!",
   themeData: AwesomeThemeData.glassSuccess(dark: false),
 ));
+
 ```
 
 Or globally:
 
 ```dart
 AwesomeSnackbar.configure(AwesomeConfig(blur: true));
+
 ```
 
 ### Custom widget
@@ -393,6 +408,7 @@ AwesomeSnackbar.show(AwesomeOptions(
     ],
   ),
 ));
+
 ```
 
 ### Custom animation builder
@@ -409,6 +425,7 @@ AwesomeSnackbar.show(AwesomeOptions(
     );
   },
 ));
+
 ```
 
 ---
@@ -416,7 +433,7 @@ AwesomeSnackbar.show(AwesomeOptions(
 ## 🎞️ Animations (9 built-in)
 
 | Name | Description |
-|---|---|
+| --- | --- |
 | `AwesomeAnimation.slide` | Slides in from the nearest edge |
 | `AwesomeAnimation.fade` | Fades in/out smoothly |
 | `AwesomeAnimation.scale` | Scales from center with ease-out-back |
@@ -450,6 +467,7 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Critical error!",
   priority: AwesomePriority.critical,
 ));
+
 ```
 
 ---
@@ -464,6 +482,7 @@ for (int i = 0; i < 5; i++) {
     key: "offline_banner",
   ));
 }
+
 ```
 
 ---
@@ -471,7 +490,7 @@ for (int i = 0; i < 5; i++) {
 ## 🌐 Platform Support
 
 | Platform | Supported |
-|---|:---:|
+| --- | --- |
 | Android | ✅ |
 | iOS | ✅ |
 | Web | ✅ |
@@ -485,23 +504,23 @@ for (int i = 0; i < 5; i++) {
 
 Zero dependency on any state management solution:
 
-- ✅ GetX — call `AwesomeSnackbar.success(...)` anywhere
-- ✅ Provider — no setup needed
-- ✅ Riverpod — works in any `ref.read()` or callback
-- ✅ Bloc / Cubit — call from `BlocListener`
-- ✅ MobX — call from reactions
-- ✅ Stacked — call from `ViewModelBuilder`
-- ✅ setState — just call it!
+* ✅ GetX — call `AwesomeSnackbar.success(...)` anywhere
+* ✅ Provider — no setup needed
+* ✅ Riverpod — works in any `ref.read()` or callback
+* ✅ Bloc / Cubit — call from `BlocListener`
+* ✅ MobX — call from reactions
+* ✅ Stacked — call from `ViewModelBuilder`
+* ✅ setState — just call it!
 
 ---
 
 ## 🗺️ Roadmap
 
-- ❌ Rich push-style notifications (image, large icon)
-- ❌ Persistent notification badge widget
-- ❌ Swipe-right to mark as actioned
-- ❌ Cross-session history persistence (SharedPreferences)
-- ❌ Notification grouping collapse UI
+* ❌ Rich push-style notifications (image, large icon)
+* ❌ Persistent notification badge widget
+* ❌ Swipe-right to mark as actioned
+* ❌ Cross-session history persistence (SharedPreferences)
+* ❌ Notification grouping collapse UI
 
 ---
 

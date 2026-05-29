@@ -1,3 +1,12 @@
+## 1.0.2
+
+- Fixed pubspec description length for pub.dev score compliance.
+- Improved YAML formatting and field ordering.
+
+## 1.0.1
+
+- Patch release: minor documentation corrections.
+
 ## 1.0.0
 
 - Initial release.

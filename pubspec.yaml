@@ -1,13 +1,11 @@
 name: flutter_awesome_snackbar
-description: >
-  The ultimate Flutter notification & snackbar plugin. Beautiful, feature-rich,
-  fully customizable — supports queues, priorities, haptics, scheduling, history,
-  gestures, glassmorphism, RTL, and every state manager. Zero boilerplate.
-  Pure Flutter — no external dependencies.
-version: 1.0.0
-homepage: https://github.com/flutter-awesome/flutter_awesome_snackbar
-repository: https://github.com/flutter-awesome/flutter_awesome_snackbar
-issue_tracker: https://github.com/flutter-awesome/flutter_awesome_snackbar/issues
+description: >-
+  Beautiful Flutter snackbars with queues, priorities, haptics, scheduling,
+  history, glassmorphism, and RTL. Zero dependencies. Pure Flutter.
+version: 1.0.2
+homepage: https://github.com/waqarulnaqvi/flutter_awesome_snackbar.git
+#repository: https://github.com/flutter-awesome/flutter_awesome_snackbar
+#issue_tracker: https://github.com/flutter-awesome/flutter_awesome_snackbar/issues
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -23,4 +21,4 @@ dev_dependencies:
   flutter_lints: ^3.0.0
 
 flutter:
-  # Pure Dart/Flutter package — no native plugin needed.
+# Pure Dart/Flutter package — no native plugin needed.
