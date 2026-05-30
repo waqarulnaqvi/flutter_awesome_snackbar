@@ -25,9 +25,10 @@ abstract final class AwesomeSnackbar {
   /// All pending notifications waiting to be shown, in priority order.
   static final _queue = <_QueueEntry>[];
 
-  /// The single notification currently visible on screen (if any).
-  /// Sequential mode: we only ever show ONE at a time.
-  static _ActiveEntry? _current;
+  // FIX: Track ALL active entries (not just one), keyed by id.
+  // Previously only _current was tracked, causing the dismiss callback
+  // for any notification shown while another was exiting to be lost.
+  static final _activeEntries = <String, _ActiveEntry>{};
 
   /// True while the current notification is still playing its exit animation.
   /// We block the next dequeue until it is fully gone.
@@ -135,7 +136,6 @@ abstract final class AwesomeSnackbar {
         _queue.add(entry);
     }
 
-    // Only promote to active if nothing is currently showing or exiting.
     _processQueue();
     return id;
   }
@@ -197,46 +197,57 @@ abstract final class AwesomeSnackbar {
 
   /// Dismiss the currently visible notification by [id].
   static void dismissById(String id) {
-    if (_current?.id == id) {
-      _current?.dismiss();
-      // Cleanup happens in unregisterActive() after exit animation finishes.
+    final active = _activeEntries[id];
+    if (active != null) {
+      // FIX: Invoke the real dismiss callback that was registered by the widget.
+      active.dismiss();
     } else {
       // It may still be in the queue — remove it there.
       _queue.removeWhere((e) => e.id == id);
-      final dedupeKey = _current?.options.key;
-      if (dedupeKey != null) _keyToId.remove(dedupeKey);
+      // Clean up dedupe key if present
+      _keyToId.removeWhere((k, v) => v == id);
     }
   }
 
   /// Dismiss the currently visible notification and clear the entire queue.
   static void dismissAll() {
     _queue.clear();
-    _current?.dismiss();
-    // _current and _keyToId cleaned up in unregisterActive()
+    // FIX: Dismiss all active entries, not just _current
+    for (final entry in List.of(_activeEntries.values)) {
+      entry.dismiss();
+    }
   }
 
   /// Dismiss all notifications belonging to [groupKey].
   static void dismissGroup(String groupKey) {
     _queue.removeWhere((e) => e.options.groupKey == groupKey);
-    if (_current?.options.groupKey == groupKey) {
-      _current?.dismiss();
+    for (final entry in List.of(_activeEntries.values)) {
+      if (entry.options.groupKey == groupKey) {
+        entry.dismiss();
+      }
     }
   }
 
   // ─── Internal API ────────────────────────────────────────────────────────
 
-  /// Promote the next queued item to active — ONLY when nothing is on screen
-  /// and nothing is in the middle of its exit animation.
+  /// Promote the next queued item to active — ONLY when no non-exiting entry
+  /// is on screen and nothing is in the middle of its exit animation.
   static void _processQueue() {
-    if (_current != null) return; // something is still visible
-    if (_isExiting) return;       // exit animation in progress
+    // FIX: Count only entries that are NOT currently exiting
+    final visibleCount = _activeEntries.values
+        .where((e) => !e.isExiting)
+        .length;
+    if (visibleCount >= 1) return; // sequential mode: one at a time
+    if (_isExiting) return;
     if (_queue.isEmpty) return;
 
     final entry = _queue.removeAt(0);
-    _current = _ActiveEntry(
+    // FIX: Register with a no-op dismiss first; real callback comes via registerActive()
+    _activeEntries[entry.id] = _ActiveEntry(
       id: entry.id,
       options: entry.options,
-      dismiss: () {}, // real callback registered via registerActive()
+      dismiss: () {},
+      isExiting: false,
     );
 
     AwesomeController._instance._emit(
@@ -246,38 +257,53 @@ abstract final class AwesomeSnackbar {
 
   /// Called by the widget to register its dismiss callback once it mounts.
   static void registerActive(String id, VoidCallback dismiss) {
-    if (_current?.id == id) {
-      _current = _ActiveEntry(
-        id: _current!.id,
-        options: _current!.options,
+    // FIX: Always update the dismiss callback regardless of whether the entry
+    // was already in _activeEntries. Previously this was gated on _current?.id == id
+    // which could miss entries added while another was exiting.
+    final existing = _activeEntries[id];
+    if (existing != null) {
+      _activeEntries[id] = _ActiveEntry(
+        id: existing.id,
+        options: existing.options,
         dismiss: dismiss,
+        isExiting: existing.isExiting,
       );
     }
+    // If not found yet (race: widget built before _processQueue registered it),
+    // the entry will be updated on the next _processQueue cycle via the stream.
   }
 
   /// Called by the widget AFTER the exit animation fully completes.
-  /// This is the only place state is cleaned up, guaranteeing the next
-  /// notification is shown only once the previous one is completely gone.
   static void unregisterActive(String id) {
-    if (_current?.id == id) {
-      final dedupeKey = _current!.options.key;
+    final entry = _activeEntries.remove(id);
+    if (entry != null) {
+      final dedupeKey = entry.options.key;
       if (dedupeKey != null) _keyToId.remove(dedupeKey);
 
       if (_config.enableHistory) {
         AwesomeHistory.instance.markDismissed(id);
       }
-
-      _current = null;
-      _isExiting = false;
     }
-    // Promote the next item now that the screen is clear.
+
+    // FIX: Only clear _isExiting when there are no more exiting entries
+    final anyStillExiting = _activeEntries.values.any((e) => e.isExiting);
+    if (!anyStillExiting) _isExiting = false;
+
     _processQueue();
   }
 
-  /// Called by the widget at the START of its exit animation so we block
-  /// queue promotion until the animation is done.
+  /// Called by the widget at the START of its exit animation.
   static void markExiting(String id) {
-    if (_current?.id == id) _isExiting = true;
+    final existing = _activeEntries[id];
+    if (existing != null) {
+      _isExiting = true;
+      _activeEntries[id] = _ActiveEntry(
+        id: existing.id,
+        options: existing.options,
+        dismiss: existing.dismiss,
+        isExiting: true,
+      );
+    }
   }
 
   static String _generateId() =>
@@ -292,8 +318,10 @@ abstract final class AwesomeSnackbar {
       case AwesomeHaptic.medium:
         await HapticFeedback.mediumImpact();
       case AwesomeHaptic.heavy:
-      case AwesomeHaptic.vibrate:
         await HapticFeedback.heavyImpact();
+    // FIX: vibrate was incorrectly mapped to heavyImpact — use HapticFeedback.vibrate()
+      case AwesomeHaptic.vibrate:
+        await HapticFeedback.vibrate();
       case AwesomeHaptic.success:
         await HapticFeedback.selectionClick();
       case AwesomeHaptic.warning:
@@ -364,10 +392,13 @@ class _ActiveEntry {
     required this.id,
     required this.options,
     required this.dismiss,
+    required this.isExiting,
   });
   final String id;
   final AwesomeOptions options;
   final VoidCallback dismiss;
+  // FIX: Track whether this specific entry is in its exit animation
+  final bool isExiting;
 }
 
 // ─── Shared stream bridge ────────────────────────────────────────────────────

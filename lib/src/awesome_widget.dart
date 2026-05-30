@@ -215,21 +215,29 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       config.animationReverseDuration ?? config.animationDuration,
     );
 
+    // FIX: Progress bar runs from 1.0 → 0.0 (depletes over duration).
+    // Use reverseDuration so _progressCtrl.reverse() depletes at the right speed.
     _progressCtrl = AnimationController(
       vsync: this,
       duration: opts.duration,
+      // We start at 1.0 and reverse, so set reverseDuration = duration
+      reverseDuration: opts.duration,
     );
+
+    // FIX: Register dismiss callback BEFORE starting animation so that any
+    // dismissById() call that arrives immediately (e.g. for a loader) always
+    // has a real callback and never hits the no-op placeholder.
+    AwesomeSnackbar.registerActive(widget.entry.id, _dismiss);
 
     // Start entrance animation
     _ctrl.forward();
 
-    // Register dismiss callback so AwesomeSnackbar.dismissById() works.
-    AwesomeSnackbar.registerActive(widget.entry.id, _dismiss);
-
     final persistent = opts.persistent || opts.duration == Duration.zero;
     if (!persistent) {
-      // Start progress bar countdown
-      _progressCtrl.forward();
+      // FIX: Start progress bar from 1.0 and reverse to 0.0 so the bar depletes
+      // visually. Previously it ran forward (0→1) which filled rather than drained.
+      _progressCtrl.value = 1.0;
+      _progressCtrl.reverse();
       // Auto-dismiss after the duration
       _autoDismissTimer = Timer(opts.duration, _dismiss);
     }
@@ -257,16 +265,22 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
 
     if (!mounted) {
       widget.entry.options.onDismiss?.call();
+      // FIX: Always call onDone so unregisterActive unblocks the queue,
+      // even when the widget is already unmounted.
       widget.entry.onDone(widget.entry.id);
       return;
     }
 
     await _ctrl.reverse();
 
-    if (!mounted) return;
+    // Check mounted again after the async gap
     widget.entry.options.onDismiss?.call();
+    if (!mounted) {
+      widget.entry.onDone(widget.entry.id);
+      return;
+    }
     // onDone → _remove → unregisterActive: this is where the controller
-    // clears _current and triggers _processQueue for the next item.
+    // clears the active entry and triggers _processQueue for the next item.
     widget.entry.onDone(widget.entry.id);
   }
 
@@ -467,7 +481,11 @@ class _NotificationCard extends StatelessWidget {
           onTap: opts.onTap != null || opts.routeName != null
               ? () {
             if (opts.routeName != null) {
-              Navigator.of(context).pushNamed(opts.routeName!);
+              // FIX: Use AwesomeSnackbar.navigatorKey instead of Navigator.of(context)
+              // because this widget lives in an Overlay that has no Navigator ancestor.
+              // Navigator.of(context) throws a "Navigator not found" error here.
+              AwesomeSnackbar.navigatorKey.currentState
+                  ?.pushNamed(opts.routeName!);
             }
             opts.onTap?.call();
             if (opts.dismissOnTap) onDismiss();
@@ -641,8 +659,8 @@ class _DefaultContent extends StatelessWidget {
             child: AnimatedBuilder(
               animation: progressController,
               builder: (_, __) => LinearProgressIndicator(
-                // progressController runs 1.0 → 0.0 (forward with reverseDuration
-                // = duration), so we use `value` directly as the remaining fraction.
+                // FIX: progressController runs 1.0 → 0.0 (reverse from full).
+                // .value directly represents the remaining fraction — no inversion needed.
                 value: progressController.value,
                 backgroundColor: progressColor.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(progressColor),
