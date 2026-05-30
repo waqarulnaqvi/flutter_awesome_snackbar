@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'awesome_config.dart';
-import 'awesome_history.dart';
 import 'awesome_options.dart';
 import 'awesome_snackbar.dart';
 import 'enums/awesome_animation.dart';
