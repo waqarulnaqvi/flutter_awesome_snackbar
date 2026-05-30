@@ -190,7 +190,7 @@ class _AnimatedNotificationCard extends StatefulWidget {
 }
 
 class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _ctrl;
 
   // Separate controller for the countdown progress bar — decoupled from

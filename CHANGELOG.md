@@ -1,3 +1,7 @@
+## 1.0.6
+
+- **Fixed:** `_AnimatedNotificationCardState` used `SingleTickerProviderStateMixin` but created two `AnimationController` objects (`_ctrl` for the entrance animation and `_progressCtrl` for the countdown progress bar), causing a Flutter assertion error: *"SingleTickerProviderStateMixin can only be used as a TickerProvider once."* Changed mixin to `TickerProviderStateMixin` which supports any number of controllers per state.
+
 ## 1.0.5
 
 - **Fixed:** Snackbars were not automatically removed after their timer completed — a double-call race between the auto-dismiss `Timer` and `dismissById()` caused `AnimationController.reverse()` to run twice, silently throwing on the second call and leaving the entry stuck on screen. Added a `_dismissCalled` boolean guard so `_dismiss()` is idempotent.
