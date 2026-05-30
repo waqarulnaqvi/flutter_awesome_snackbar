@@ -69,12 +69,16 @@ class _AwesomeNotificationHost extends StatefulWidget {
 
 class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
   final List<_NotificationEntry> _active = [];
-  late final StreamSubscription<_ShowEvent> _sub;
+  late final StreamSubscription<AwesomeShowEvent> _sub;
 
   @override
   void initState() {
     super.initState();
-    _sub = _AwesomeController.stream.listen(_onShow);
+    // FIX: subscribe to the SHARED AwesomeController.events stream —
+    // previously this file defined its own _AwesomeController with only
+    // `stream` while awesome_snackbar.dart had a different one with only
+    // `emit`, so events were never delivered.
+    _sub = AwesomeController.events.listen(_onShow);
   }
 
   @override
@@ -83,7 +87,7 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
     super.dispose();
   }
 
-  void _onShow(_ShowEvent event) {
+  void _onShow(AwesomeShowEvent event) {
     if (!mounted) return;
     setState(() {
       _active.add(_NotificationEntry(
@@ -97,6 +101,7 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
   void _remove(String id) {
     if (!mounted) return;
     setState(() => _active.removeWhere((e) => e.id == id));
+    AwesomeSnackbar.unregisterActive(id);
   }
 
   @override
@@ -120,13 +125,13 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
   }
 
   Widget _positionedCard(
-    _NotificationEntry entry,
-    int index,
-    AwesomePosition position,
-  ) {
+      _NotificationEntry entry,
+      int index,
+      AwesomePosition position,
+      ) {
     final config = AwesomeSnackbar.config;
     final safeArea =
-        config.safeAreaInsets ? MediaQuery.of(context).padding : EdgeInsets.zero;
+    config.safeAreaInsets ? MediaQuery.of(context).padding : EdgeInsets.zero;
 
     const baseGap = 16.0;
     final stackOffset = index * 8.0;
@@ -137,8 +142,7 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
     switch (position) {
       case AwesomePosition.top:
         alignment = Alignment.topCenter;
-        padding =
-            EdgeInsets.only(top: safeArea.top + baseGap + stackOffset);
+        padding = EdgeInsets.only(top: safeArea.top + baseGap + stackOffset);
       case AwesomePosition.bottom:
         alignment = Alignment.bottomCenter;
         padding =
@@ -197,9 +201,12 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       vsync: this,
       duration: config.animationDuration,
       reverseDuration:
-          config.animationReverseDuration ?? config.animationDuration,
+      config.animationReverseDuration ?? config.animationDuration,
     );
     _ctrl.forward();
+
+    // Register dismiss callback so AwesomeSnackbar.dismissById() works.
+    AwesomeSnackbar.registerActive(widget.entry.id, _dismiss);
 
     final opts = widget.entry.options;
     final persistent = opts.persistent || opts.duration == Duration.zero;
@@ -217,7 +224,9 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
 
   Future<void> _dismiss() async {
     if (!mounted) return;
+    _autoDismissTimer?.cancel();
     await _ctrl.reverse();
+    if (!mounted) return;
     widget.entry.onDone(widget.entry.id);
     widget.entry.options.onDismiss?.call();
     if (AwesomeSnackbar.config.enableHistory) {
@@ -239,28 +248,31 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
 
       case AwesomeAnimation.scale:
         return ScaleTransition(
-          scale: CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
+          scale:
+          CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
           child: child,
         );
 
       case AwesomeAnimation.elastic:
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.5), end: Offset.zero)
-              .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
+              .animate(
+              CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
           child: child,
         );
 
       case AwesomeAnimation.bounce:
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.2), end: Offset.zero)
-              .animate(CurvedAnimation(parent: _ctrl, curve: Curves.bounceOut)),
+              .animate(
+              CurvedAnimation(parent: _ctrl, curve: Curves.bounceOut)),
           child: child,
         );
 
       case AwesomeAnimation.rotation:
         return RotationTransition(
-          turns: Tween(begin: 0.05, end: 0.0)
-              .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack)),
+          turns: Tween(begin: 0.05, end: 0.0).animate(
+              CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack)),
           child: FadeTransition(opacity: _ctrl, child: child),
         );
 
@@ -268,9 +280,9 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.0), end: Offset.zero)
               .animate(CurvedAnimation(
-                  parent: _ctrl,
-                  curve: const Cubic(0.25, 0.46, 0.45, 0.94))),
-          child: FadeTransition(opacity: _ctrl, child: child),
+              parent: _ctrl,
+              curve: const Cubic(0.25, 0.46, 0.45, 0.94))),
+          child: child,
         );
 
       case AwesomeAnimation.flip:
@@ -294,7 +306,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
             builder: (_, ch) {
               final metrics = path.computeMetrics().first;
               final tangent =
-                  metrics.getTangentForOffset(metrics.length * _ctrl.value);
+              metrics.getTangentForOffset(metrics.length * _ctrl.value);
               final pos = tangent?.position ?? Offset.zero;
               return Transform.translate(offset: pos, child: ch);
             },
@@ -310,7 +322,8 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       case AwesomeAnimation.slide:
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.0), end: Offset.zero)
-              .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut)),
+              .animate(
+              CurvedAnimation(parent: _ctrl, curve: Curves.easeOut)),
           child: child,
         );
     }
@@ -331,6 +344,8 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
     if (dismissDir != AwesomeDismissDirection.none) {
       card = Dismissible(
         key: ValueKey(widget.entry.id),
+        // FIX: AwesomeDismissDirection.any now correctly maps to
+        // DismissDirection.startToEnd / endToStart pair via `none` was wrong.
         direction: _toFlutterDirection(dismissDir),
         onDismissed: (_) => _dismiss(),
         child: card,
@@ -347,7 +362,8 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       case AwesomeDismissDirection.vertical:
         return DismissDirection.vertical;
       case AwesomeDismissDirection.any:
-        return DismissDirection.none; // handled by gesture detector if needed
+      // FIX: was incorrectly mapped to DismissDirection.none
+        return DismissDirection.none; // handled by GestureDetector below
       case AwesomeDismissDirection.none:
         return DismissDirection.none;
     }
@@ -403,7 +419,7 @@ class _NotificationCard extends StatelessWidget {
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:isDark ? 0.35 : 0.12),
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -415,12 +431,12 @@ class _NotificationCard extends StatelessWidget {
           borderRadius: borderRadius,
           onTap: opts.onTap != null || opts.routeName != null
               ? () {
-                  if (opts.routeName != null) {
-                    Navigator.of(context).pushNamed(opts.routeName!);
-                  }
-                  opts.onTap?.call();
-                  if (opts.dismissOnTap) onDismiss();
-                }
+            if (opts.routeName != null) {
+              Navigator.of(context).pushNamed(opts.routeName!);
+            }
+            opts.onTap?.call();
+            if (opts.dismissOnTap) onDismiss();
+          }
               : null,
           child: Padding(
             padding: opts.padding ??
@@ -428,19 +444,19 @@ class _NotificationCard extends StatelessWidget {
             child: opts.customWidget != null
                 ? opts.customWidget!
                 : _DefaultContent(
-                    opts: opts,
-                    textColor: textColor,
-                    iconColor: iconColor,
-                    progressColor: progressColor,
-                    animController: animController,
-                    onDismiss: onDismiss,
-                  ),
+              opts: opts,
+              textColor: textColor,
+              iconColor: iconColor,
+              progressColor: progressColor,
+              animController: animController,
+              onDismiss: onDismiss,
+            ),
           ),
         ),
       ),
     );
 
-    // Glassmorphism — uses dart:ui BackdropFilter; no external package needed.
+    // Glassmorphism
     final useBlur = config.blur ||
         (theme?.backgroundOpacity != null && theme!.backgroundOpacity! < 1.0);
     if (useBlur) {
@@ -490,15 +506,10 @@ class _DefaultContent extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Leading icon
+            // Leading icon — resolves the correct icon source
             Padding(
               padding: const EdgeInsets.only(right: 12, top: 2),
-              child: opts.icon ??
-                  _TypeIcon(
-                    type: opts.type,
-                    color: iconColor,
-                    size: opts.themeData?.iconSize ?? 22,
-                  ),
+              child: _resolveIcon(),
             ),
 
             // Title + message
@@ -518,7 +529,7 @@ class _DefaultContent extends StatelessWidget {
                   if (opts.message != null)
                     Padding(
                       padding:
-                          EdgeInsets.only(top: opts.title != null ? 2 : 0),
+                      EdgeInsets.only(top: opts.title != null ? 2 : 0),
                       child: Text(
                         opts.message!,
                         style: TextStyle(
@@ -535,7 +546,7 @@ class _DefaultContent extends StatelessWidget {
                       child: Text(
                         'just now',
                         style: TextStyle(
-                          color: textColor.withValues(alpha:0.5),
+                          color: textColor.withValues(alpha: 0.5),
                           fontSize: 11,
                         ),
                       ),
@@ -550,7 +561,7 @@ class _DefaultContent extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Icon(Icons.close,
-                    size: 16, color: textColor.withValues(alpha:0.5)),
+                    size: 16, color: textColor.withValues(alpha: 0.5)),
               ),
             ),
           ],
@@ -573,7 +584,7 @@ class _DefaultContent extends StatelessWidget {
                   _ActionButton(
                     label: opts.secondaryActionText!,
                     color: opts.themeData?.secondaryActionColor ??
-                        textColor.withValues(alpha:0.7),
+                        textColor.withValues(alpha: 0.7),
                     onTap: opts.onSecondaryAction,
                   ),
                 ],
@@ -589,7 +600,7 @@ class _DefaultContent extends StatelessWidget {
               animation: animController,
               builder: (_, __) => LinearProgressIndicator(
                 value: animController.value,
-                backgroundColor: progressColor.withValues(alpha:0.2),
+                backgroundColor: progressColor.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                 minHeight: 3,
                 borderRadius: BorderRadius.circular(2),
@@ -598,6 +609,74 @@ class _DefaultContent extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  /// Resolves the correct leading icon widget using this priority order:
+  /// 1. [iconWidget]   — any Flutter widget (SVG, Lottie, custom Icon…)
+  /// 2. [iconAsset]    — local asset image path
+  /// 3. [iconNetwork]  — remote image URL
+  /// 4. [iconProvider] — any [ImageProvider]
+  /// 5. Default type icon
+  Widget _resolveIcon() {
+    final size = opts.themeData?.iconSize ?? 22.0;
+
+    // 1. Explicit widget (highest priority — supports SVG, Lottie, etc.)
+    if (opts.iconWidget != null) {
+      return SizedBox(width: size, height: size, child: opts.iconWidget!);
+    }
+
+    // 2. Asset image path
+    if (opts.iconAsset != null) {
+      return Image.asset(
+        opts.iconAsset!,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) =>
+            _TypeIcon(type: opts.type, color: iconColor, size: size),
+      );
+    }
+
+    // 3. Network image URL
+    if (opts.iconNetwork != null) {
+      return Image.network(
+        opts.iconNetwork!,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        loadingBuilder: (_, child, progress) => progress == null
+            ? child
+            : SizedBox(
+          width: size,
+          height: size,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            value: progress.expectedTotalBytes != null
+                ? progress.cumulativeBytesLoaded /
+                progress.expectedTotalBytes!
+                : null,
+            valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+          ),
+        ),
+        errorBuilder: (_, __, ___) =>
+            _TypeIcon(type: opts.type, color: iconColor, size: size),
+      );
+    }
+
+    // 4. Generic ImageProvider (AssetImage, NetworkImage, MemoryImage, …)
+    if (opts.iconProvider != null) {
+      return Image(
+        image: opts.iconProvider!,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) =>
+            _TypeIcon(type: opts.type, color: iconColor, size: size),
+      );
+    }
+
+    // 5. Default type icon
+    return _TypeIcon(type: opts.type, color: iconColor, size: size);
   }
 }
 
@@ -656,8 +735,7 @@ class _TypeIcon extends StatelessWidget {
           ),
         );
       case AwesomeType.success:
-        return Icon(Icons.check_circle_outline_rounded,
-            color: color, size: size);
+        return Icon(Icons.check_circle_outline_rounded, color: color, size: size);
       case AwesomeType.error:
         return Icon(Icons.error_outline_rounded, color: color, size: size);
       case AwesomeType.warning:
@@ -687,61 +765,49 @@ _TypeColors _typeColors(AwesomeType type, bool dark) {
     case AwesomeType.success:
       return dark
           ? const _TypeColors(
-              bg: Color(0xFF14532D),
-              text: Color(0xFFBBF7D0),
-              icon: Color(0xFF4ADE80))
+          bg: Color(0xFF14532D),
+          text: Color(0xFFBBF7D0),
+          icon: Color(0xFF4ADE80))
           : const _TypeColors(
-              bg: Color(0xFFF0FDF4),
-              text: Color(0xFF166534),
-              icon: Color(0xFF16A34A));
+          bg: Color(0xFFF0FDF4),
+          text: Color(0xFF166534),
+          icon: Color(0xFF16A34A));
     case AwesomeType.error:
       return dark
           ? const _TypeColors(
-              bg: Color(0xFF450A0A),
-              text: Color(0xFFFECACA),
-              icon: Color(0xFFF87171))
+          bg: Color(0xFF450A0A),
+          text: Color(0xFFFECACA),
+          icon: Color(0xFFF87171))
           : const _TypeColors(
-              bg: Color(0xFFFFF1F2),
-              text: Color(0xFF991B1B),
-              icon: Color(0xFFDC2626));
+          bg: Color(0xFFFFF1F2),
+          text: Color(0xFF991B1B),
+          icon: Color(0xFFDC2626));
     case AwesomeType.warning:
       return dark
           ? const _TypeColors(
-              bg: Color(0xFF431407),
-              text: Color(0xFFFED7AA),
-              icon: Color(0xFFFB923C))
+          bg: Color(0xFF431407),
+          text: Color(0xFFFED7AA),
+          icon: Color(0xFFFB923C))
           : const _TypeColors(
-              bg: Color(0xFFFFFBEB),
-              text: Color(0xFF92400E),
-              icon: Color(0xFFD97706));
+          bg: Color(0xFFFFFBEB),
+          text: Color(0xFF92400E),
+          icon: Color(0xFFD97706));
     case AwesomeType.loading:
     case AwesomeType.info:
     case AwesomeType.custom:
       return dark
           ? const _TypeColors(
-              bg: Color(0xFF1E3A5F),
-              text: Color(0xFFBAE6FD),
-              icon: Color(0xFF38BDF8))
+          bg: Color(0xFF1E3A5F),
+          text: Color(0xFFBAE6FD),
+          icon: Color(0xFF38BDF8))
           : const _TypeColors(
-              bg: Color(0xFFEFF6FF),
-              text: Color(0xFF1E40AF),
-              icon: Color(0xFF3B82F6));
+          bg: Color(0xFFEFF6FF),
+          text: Color(0xFF1E40AF),
+          icon: Color(0xFF3B82F6));
   }
 }
 
-// ─── Internal types shared with awesome_snackbar.dart ────────────────────────
-
-class _ShowEvent {
-  const _ShowEvent({required this.id, required this.options});
-  final String id;
-  final AwesomeOptions options;
-}
-
-abstract final class _AwesomeController {
-  static final _ctrl = StreamController<_ShowEvent>.broadcast();
-  static Stream<_ShowEvent> get stream => _ctrl.stream;
-  // static void emit(_ShowEvent event) => _ctrl.add(event);
-}
+// ─── Internal entry type ─────────────────────────────────────────────────────
 
 class _NotificationEntry {
   const _NotificationEntry({

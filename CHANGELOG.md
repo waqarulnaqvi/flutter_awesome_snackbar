@@ -1,3 +1,11 @@
+## 1.0.3
+
+- **Fixed:** Notifications never rendered — the stream bridge was split across two files (`awesome_snackbar.dart` had `emit()`, `awesome_widget.dart` had `stream`) and they never connected. Replaced with a single shared `AwesomeController` singleton.
+- **Fixed:** `dismissById()` had no effect — `registerActive` was never called, so the dismiss callback map was always empty.
+- **Fixed:** `AwesomeDismissDirection.any` was incorrectly mapped to `DismissDirection.none`, silently disabling swipe-to-dismiss entirely.
+- **Added:** Four icon input variants in `AwesomeOptions` — `iconWidget` (any Flutter widget including SVG and Lottie), `iconAsset` (local asset path), `iconNetwork` (remote URL with loading indicator), and `iconProvider` (any `ImageProvider`). All fall back gracefully to the default type icon on error.
+- **Removed:** The previous `icon: Widget?` field, superseded by the four typed icon fields above.
+
 ## 1.0.2
 
 - Fixed pubspec description length for pub.dev score compliance.

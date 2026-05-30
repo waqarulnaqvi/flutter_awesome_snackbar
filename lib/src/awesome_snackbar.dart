@@ -51,40 +51,43 @@ abstract final class AwesomeSnackbar {
 
   /// Show a success notification.
   static String success(
-    String message, {
-    String? title,
-    AwesomeOptions? options,
-  }) =>
+      String message, {
+        String? title,
+        AwesomeOptions? options,
+      }) =>
       show(
-        _merge(options, type: AwesomeType.success, message: message, title: title),
+        _merge(options,
+            type: AwesomeType.success, message: message, title: title),
       );
 
   /// Show an error notification.
   static String error(
-    String message, {
-    String? title,
-    AwesomeOptions? options,
-  }) =>
+      String message, {
+        String? title,
+        AwesomeOptions? options,
+      }) =>
       show(
-        _merge(options, type: AwesomeType.error, message: message, title: title),
+        _merge(options,
+            type: AwesomeType.error, message: message, title: title),
       );
 
   /// Show a warning notification.
   static String warning(
-    String message, {
-    String? title,
-    AwesomeOptions? options,
-  }) =>
+      String message, {
+        String? title,
+        AwesomeOptions? options,
+      }) =>
       show(
-        _merge(options, type: AwesomeType.warning, message: message, title: title),
+        _merge(options,
+            type: AwesomeType.warning, message: message, title: title),
       );
 
   /// Show an info notification.
   static String info(
-    String message, {
-    String? title,
-    AwesomeOptions? options,
-  }) =>
+      String message, {
+        String? title,
+        AwesomeOptions? options,
+      }) =>
       show(
         _merge(options, type: AwesomeType.info, message: message, title: title),
       );
@@ -93,12 +96,12 @@ abstract final class AwesomeSnackbar {
   ///
   /// Dismiss manually with [dismissById].
   static String loading(String message) => show(
-        AwesomeOptions(
-          type: AwesomeType.loading,
-          message: message,
-          persistent: true,
-        ),
-      );
+    AwesomeOptions(
+      type: AwesomeType.loading,
+      message: message,
+      persistent: true,
+    ),
+  );
 
   // ─── Full control ────────────────────────────────────────────────────────
 
@@ -149,16 +152,6 @@ abstract final class AwesomeSnackbar {
   ///   error: "Upload failed.",
   /// );
   /// ```
-  ///
-  /// Dynamic messages:
-  /// ```dart
-  /// await AwesomeSnackbar.future<User>(
-  ///   future: fetchUser(),
-  ///   loading: "Fetching profile...",
-  ///   success: (user) => "Welcome, ${user.name}!",
-  ///   error: (e) => "Error: $e",
-  /// );
-  /// ```
   static Future<T?> future<T>({
     required Future<T> future,
     required String loading,
@@ -199,13 +192,6 @@ abstract final class AwesomeSnackbar {
   /// Show a notification after [delay].
   ///
   /// Returns a schedule ID; cancel with [cancelScheduled].
-  ///
-  /// ```dart
-  /// final sid = AwesomeSnackbar.schedule(
-  ///   delay: Duration(seconds: 5),
-  ///   options: AwesomeOptions(type: AwesomeType.info, message: "Time to stretch!"),
-  /// );
-  /// ```
   static String schedule({
     required Duration delay,
     required AwesomeOptions options,
@@ -230,6 +216,10 @@ abstract final class AwesomeSnackbar {
   static void dismissById(String id) {
     _active[id]?.dismiss();
     _active.remove(id);
+    _keys.removeWhere((k) {
+      // remove dedupe key associated with this id if any
+      return false; // key tracking is per-options.key, not per-id; leave as-is
+    });
     _processQueue();
     if (_config.enableHistory) AwesomeHistory.instance.markDismissed(id);
   }
@@ -241,6 +231,7 @@ abstract final class AwesomeSnackbar {
     }
     _active.clear();
     _queue.clear();
+    _keys.clear();
   }
 
   /// Dismiss all notifications belonging to [groupKey].
@@ -257,22 +248,40 @@ abstract final class AwesomeSnackbar {
   // ─── Internal ────────────────────────────────────────────────────────────
 
   static void _processQueue() {
-    // Rendering is handled by _AwesomeNotificationHost via the stream bridge.
-    // This is called after enqueue / dismiss to trigger the stream consumer.
-    if (_queue.isEmpty) return;
     final maxV = _config.maxVisible;
     while (_active.length < maxV && _queue.isNotEmpty) {
       final entry = _queue.removeAt(0);
-      _AwesomeController.emit(_ShowEvent(id: entry.id, options: entry.options));
+      // Register as active with a no-op dismiss — the real dismiss comes from
+      // the widget via [registerActive] / [unregisterActive].
+      AwesomeSnackbar._active[entry.id] =
+          _ActiveEntry(id: entry.id, options: entry.options, dismiss: () {});
+      AwesomeController._instance._emit(
+        AwesomeShowEvent(id: entry.id, options: entry.options),
+      );
     }
+  }
+
+  /// Called by the widget to register its dismiss callback.
+  static void registerActive(String id, VoidCallback dismiss) {
+    final existing = _active[id];
+    if (existing != null) {
+      _active[id] =
+          _ActiveEntry(id: existing.id, options: existing.options, dismiss: dismiss);
+    }
+  }
+
+  /// Called by the widget when a notification finishes its exit animation.
+  static void unregisterActive(String id) {
+    _active.remove(id);
+    // Also remove dedupe key so the same key can be shown again later.
+    final key = _active[id]?.options.key;
+    if (key != null) _keys.remove(key);
+    _processQueue();
   }
 
   static String _generateId() =>
       '${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(9999)}';
 
-  /// Trigger haptic feedback using Flutter's built-in [HapticFeedback].
-  ///
-  /// No external package required.
   static Future<void> _triggerHaptic(AwesomeHaptic haptic) async {
     switch (haptic) {
       case AwesomeHaptic.none:
@@ -293,14 +302,13 @@ abstract final class AwesomeSnackbar {
     }
   }
 
-  /// Internal helper — merges base options with typed overrides.
   static AwesomeOptions _merge(
-    AwesomeOptions? base, {
-    required AwesomeType type,
-    String? message,
-    String? title,
-    bool? persistent,
-  }) {
+      AwesomeOptions? base, {
+        required AwesomeType type,
+        String? message,
+        String? title,
+        bool? persistent,
+      }) {
     return AwesomeOptions(
       title: title ?? base?.title,
       message: message ?? base?.message,
@@ -318,7 +326,10 @@ abstract final class AwesomeSnackbar {
       dismissDirection: base?.dismissDirection,
       priority: base?.priority ?? AwesomePriority.normal,
       key: base?.key,
-      icon: base?.icon,
+      iconWidget: base?.iconWidget,
+      iconAsset: base?.iconAsset,
+      iconNetwork: base?.iconNetwork,
+      iconProvider: base?.iconProvider,
       customWidget: base?.customWidget,
       themeData: base?.themeData,
       haptic: base?.haptic,
@@ -358,16 +369,30 @@ class _ActiveEntry {
   final VoidCallback dismiss;
 }
 
-// ─── Internal stream bridge ───────────────────────────────────────────────────
+// ─── Shared stream bridge (single source of truth) ───────────────────────────
 
-class _ShowEvent {
-  const _ShowEvent({required this.id, required this.options});
+/// Event emitted when a notification should be displayed.
+class AwesomeShowEvent {
+  const AwesomeShowEvent({required this.id, required this.options});
   final String id;
   final AwesomeOptions options;
 }
 
-abstract final class _AwesomeController {
-  static final _ctrl = StreamController<_ShowEvent>.broadcast();
-  // static Stream<_ShowEvent> get stream => _ctrl.stream;
-  static void emit(_ShowEvent event) => _ctrl.add(event);
+/// Singleton stream controller shared between [AwesomeSnackbar] and
+/// [AwesomeWidget]. This fixes the previous split-definition bug where
+/// `emit()` lived in one file and `stream` lived in the other, meaning
+/// notifications were enqueued but never rendered.
+class AwesomeController {
+  AwesomeController._();
+  static final AwesomeController _instance = AwesomeController._();
+
+  final StreamController<AwesomeShowEvent> _ctrl =
+  StreamController<AwesomeShowEvent>.broadcast();
+
+  Stream<AwesomeShowEvent> get stream => _ctrl.stream;
+
+  void _emit(AwesomeShowEvent event) => _ctrl.add(event);
+
+  /// Exposed so [AwesomeWidget] can subscribe.
+  static Stream<AwesomeShowEvent> get events => _instance.stream;
 }
