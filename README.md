@@ -39,6 +39,8 @@ The most powerful, beautiful, and developer-friendly Flutter notification packag
 | **★ Overlay scrim** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **★ Cancel scheduled** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **★ Dismiss callback** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **★ Asset / network icons** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **★ SVG / Lottie icon slot** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ---
 
@@ -48,13 +50,11 @@ The most powerful, beautiful, and developer-friendly Flutter notification packag
 
 ```yaml
 dependencies:
-  flutter_awesome_snackbar: ^1.0.0
-
+  flutter_awesome_snackbar: ^1.0.3
 ```
 
 ```sh
 flutter pub get
-
 ```
 
 ### 2. Initialize
@@ -75,7 +75,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
 ```
 
 ### 3. Show notifications
@@ -85,7 +84,6 @@ AwesomeSnackbar.success("Profile saved!");
 AwesomeSnackbar.error("Payment failed.");
 AwesomeSnackbar.warning("Weak internet connection.");
 AwesomeSnackbar.info("Version 2.0 is available.");
-
 ```
 
 Done. 🎉
@@ -118,7 +116,6 @@ AwesomeSnackbar.info("New update");
 final id = AwesomeSnackbar.loading("Uploading...");
 AwesomeSnackbar.dismissById(id);
 AwesomeSnackbar.dismissAll();
-
 ```
 
 ### Full control with AwesomeOptions
@@ -141,7 +138,6 @@ AwesomeSnackbar.show(AwesomeOptions(
   onDismiss: () => print("dismissed"),
   dismissOnTap: false,
 ));
-
 ```
 
 ### Future tracking
@@ -153,7 +149,6 @@ await AwesomeSnackbar.future(
   success: "Upload complete! 🎉",
   error: "Upload failed. Please retry.",
 );
-
 ```
 
 Dynamic messages based on result:
@@ -165,7 +160,6 @@ await AwesomeSnackbar.future<User>(
   success: (user) => "Welcome back, ${user.name}!",
   error: (e) => "Error: ${e.toString()}",
 );
-
 ```
 
 ### Extension methods
@@ -185,7 +179,6 @@ uploadFile().flashFuture(
   success: (_) => "Done!",
   error: (e) => "Failed: $e",
 );
-
 ```
 
 ---
@@ -200,7 +193,6 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Saved!",
   haptic: AwesomeHaptic.success,  // uses Flutter's HapticFeedback
 ));
-
 ```
 
 Available: `none`, `light`, `medium`, `heavy`, `success`, `warning`, `error`, `vibrate`
@@ -211,7 +203,6 @@ Set globally:
 AwesomeSnackbar.configure(AwesomeConfig(
   defaultHaptic: AwesomeHaptic.light,
 ));
-
 ```
 
 ### Scheduling & delayed notifications
@@ -227,7 +218,6 @@ final sid = AwesomeSnackbar.schedule(
 
 // Cancel if no longer needed
 AwesomeSnackbar.cancelScheduled(sid);
-
 ```
 
 ### Tap-to-route
@@ -239,7 +229,6 @@ AwesomeSnackbar.show(AwesomeOptions(
   routeName: "/order-tracking",
   dismissOnTap: true,
 ));
-
 ```
 
 ### Notification history
@@ -258,7 +247,6 @@ final unread = AwesomeHistory.instance.unreadCount;
 // Mark all read / clear
 AwesomeHistory.instance.markAllRead();
 AwesomeHistory.instance.clear();
-
 ```
 
 ### Grouped notifications
@@ -272,7 +260,6 @@ AwesomeSnackbar.show(AwesomeOptions(
 
 // Dismiss the entire group
 AwesomeSnackbar.dismissGroup("chat_alice");
-
 ```
 
 ### Custom path animation
@@ -285,7 +272,6 @@ AwesomeSnackbar.show(AwesomeOptions(
     ..moveTo(-200, 0)
     ..quadraticBezierTo(0, -150, 0, 0),
 ));
-
 ```
 
 ### Flip animation (3D card flip)
@@ -296,7 +282,90 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Card flip entrance",
   animation: AwesomeAnimation.flip,
 ));
+```
 
+---
+
+## 🖼️ Custom Icons
+
+Every notification accepts a custom leading icon. Four input methods are supported — pick whichever fits your asset type.
+
+### Widget icon (SVG, Lottie, any Flutter widget)
+
+Pass any widget directly. This is the most flexible option and supports third-party renderers like `flutter_svg` or `lottie`.
+
+```dart
+// Material icon with custom colour
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.custom,
+  message: "Starred!",
+  iconWidget: const Icon(Icons.star_rounded, color: Colors.amber, size: 22),
+));
+
+// SVG asset (requires flutter_svg in your app)
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.success,
+  message: "Upload complete",
+  iconWidget: SvgPicture.asset('assets/icons/check.svg', width: 22),
+));
+
+// Lottie animation (requires lottie in your app)
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.success,
+  message: "Done!",
+  iconWidget: Lottie.asset('assets/lottie/success.json', width: 28),
+));
+```
+
+### Asset image
+
+```dart
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.info,
+  message: "Achievement unlocked",
+  iconAsset: 'assets/icons/trophy.png',
+));
+```
+
+### Network image
+
+```dart
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.info,
+  message: "Alice sent you a message",
+  iconNetwork: 'https://example.com/avatars/alice.png',
+));
+```
+
+### ImageProvider
+
+```dart
+// AssetImage
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.success,
+  message: "Profile updated",
+  iconProvider: const AssetImage('assets/icons/check.png'),
+));
+
+// NetworkImage
+AwesomeSnackbar.show(AwesomeOptions(
+  type: AwesomeType.info,
+  message: "New badge earned",
+  iconProvider: NetworkImage('https://example.com/badges/gold.png'),
+));
+```
+
+> **Priority order:** `iconWidget` → `iconAsset` → `iconNetwork` → `iconProvider` → default type icon.
+> All image sources fall back gracefully to the default type icon if loading fails.
+
+Icon size is controlled via `AwesomeThemeData.iconSize`:
+
+```dart
+AwesomeSnackbar.show(AwesomeOptions(
+  message: "Big icon",
+  iconAsset: 'assets/icons/star.png',
+  themeData: AwesomeThemeData(iconSize: 32),
+));
 ```
 
 ---
@@ -322,7 +391,6 @@ AwesomeSnackbar.configure(AwesomeConfig(
   tapThroughEnabled: false,
   safeAreaInsets: true,
 ));
-
 ```
 
 ### Custom theme per notification
@@ -343,7 +411,6 @@ AwesomeSnackbar.show(AwesomeOptions(
     elevation: 8,
   ),
 ));
-
 ```
 
 ### Gradient background
@@ -365,7 +432,6 @@ AwesomeSnackbar.show(AwesomeOptions(
   actionText: "Upgrade",
   onAction: () => openUpgradeScreen(),
 ));
-
 ```
 
 ### Glassmorphism (dart:ui — no external package)
@@ -376,14 +442,12 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Saved with glass effect!",
   themeData: AwesomeThemeData.glassSuccess(dark: false),
 ));
-
 ```
 
 Or globally:
 
 ```dart
 AwesomeSnackbar.configure(AwesomeConfig(blur: true));
-
 ```
 
 ### Custom widget
@@ -408,7 +472,6 @@ AwesomeSnackbar.show(AwesomeOptions(
     ],
   ),
 ));
-
 ```
 
 ### Custom animation builder
@@ -425,7 +488,6 @@ AwesomeSnackbar.show(AwesomeOptions(
     );
   },
 ));
-
 ```
 
 ---
@@ -467,7 +529,6 @@ AwesomeSnackbar.show(AwesomeOptions(
   message: "Critical error!",
   priority: AwesomePriority.critical,
 ));
-
 ```
 
 ---
@@ -482,7 +543,6 @@ for (int i = 0; i < 5; i++) {
     key: "offline_banner",
   ));
 }
-
 ```
 
 ---

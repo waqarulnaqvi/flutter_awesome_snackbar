@@ -1,3 +1,9 @@
+## 1.0.4
+
+- Updated README: added dedicated Custom Icons section covering all four icon input methods (`iconWidget`, `iconAsset`, `iconNetwork`, `iconProvider`) with usage examples.
+- Updated README: added `★ Asset / network icons` and `★ SVG / Lottie icon slot` rows to the feature comparison table.
+- Updated README: install snippet now references `^1.0.3`.
+
 ## 1.0.3
 
 - **Fixed:** Notifications never rendered — the stream bridge was split across two files (`awesome_snackbar.dart` had `emit()`, `awesome_widget.dart` had `stream`) and they never connected. Replaced with a single shared `AwesomeController` singleton.
