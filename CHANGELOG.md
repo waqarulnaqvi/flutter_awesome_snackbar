@@ -1,3 +1,16 @@
+## 1.0.5
+
+- **Fixed:** Snackbars were not automatically removed after their timer completed — a double-call race between the auto-dismiss `Timer` and `dismissById()` caused `AnimationController.reverse()` to run twice, silently throwing on the second call and leaving the entry stuck on screen. Added a `_dismissCalled` boolean guard so `_dismiss()` is idempotent.
+- **Fixed:** Multiple snackbars appeared simultaneously instead of sequentially — `_processQueue` used `_active.length < maxVisible` (default 3), allowing several items to be promoted at once. Replaced the `_active` map with a single `_current` nullable entry and an `_isExiting` flag so only one notification is ever on screen at a time, and the next one is shown only after the previous one's exit animation fully completes.
+- **Fixed:** Dedupe key leak — the `_keys` Set was never cleaned up on dismiss, so a notification with a given `key` could only ever be shown once per session. Replaced with a `_keyToId` Map that is cleared precisely in `unregisterActive()`.
+- **Fixed:** `unregisterActive()` read from `_active` after already removing the entry, so the dedupe key associated with a dismissed notification was never released.
+- **Fixed:** Progress bar was driven by the entrance `AnimationController` (0 → 1 over 350 ms) instead of a real countdown. Introduced a dedicated `_progressCtrl` that runs independently over the full notification `duration`, giving a correct depleting bar.
+- **Fixed:** `AwesomeDismissDirection.any` was mapped to `DismissDirection.none` (a leftover incorrect comment-only fix from 1.0.3). Now correctly maps to `DismissDirection.startToEnd`.
+- **Fixed:** `dismissAll()` iterated directly over `_active.values` while removing entries, causing a concurrent-modification error. Now iterates over a copied list.
+- **Fixed:** Layout jank caused by `Dismissible` inside an unbounded `Stack`. Added `StackFit.expand` so the Stack always has a definite size.
+- **Added:** `AwesomeSnackbar.markExiting(id)` — called at the start of the exit animation to block queue promotion during the reverse animation, closing the async gap between `_dismiss()` being called and `unregisterActive()` completing.
+- **Improved:** `GestureDetector` on the dismiss × button and action buttons now uses `HitTestBehavior.opaque` for more reliable tap detection on small targets.
+
 ## 1.0.4
 
 - Updated README: added dedicated Custom Icons section covering all four icon input methods (`iconWidget`, `iconAsset`, `iconNetwork`, `iconProvider`) with usage examples.

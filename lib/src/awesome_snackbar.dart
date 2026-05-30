@@ -21,22 +21,26 @@ abstract final class AwesomeSnackbar {
   AwesomeSnackbar._();
 
   static AwesomeConfig _config = const AwesomeConfig();
+
+  /// All pending notifications waiting to be shown, in priority order.
   static final _queue = <_QueueEntry>[];
-  static final _active = <String, _ActiveEntry>{};
-  static final _keys = <String>{};
+
+  /// The single notification currently visible on screen (if any).
+  /// Sequential mode: we only ever show ONE at a time.
+  static _ActiveEntry? _current;
+
+  /// True while the current notification is still playing its exit animation.
+  /// We block the next dequeue until it is fully gone.
+  static bool _isExiting = false;
+
+  /// Tracks which dedupe keys are in-flight (active or queued).
+  static final _keyToId = <String, String>{};
+
   static final _scheduledTimers = <String, Timer>{};
 
   // ─── Configuration ───────────────────────────────────────────────────────
 
   /// Apply global defaults. Call once, typically at app startup.
-  ///
-  /// ```dart
-  /// AwesomeSnackbar.configure(AwesomeConfig(
-  ///   position: AwesomePosition.bottom,
-  ///   blur: true,
-  ///   defaultHaptic: AwesomeHaptic.light,
-  /// ));
-  /// ```
   static void configure(AwesomeConfig config) => _config = config;
 
   /// Current global config.
@@ -55,10 +59,8 @@ abstract final class AwesomeSnackbar {
         String? title,
         AwesomeOptions? options,
       }) =>
-      show(
-        _merge(options,
-            type: AwesomeType.success, message: message, title: title),
-      );
+      show(_merge(options,
+          type: AwesomeType.success, message: message, title: title));
 
   /// Show an error notification.
   static String error(
@@ -66,10 +68,8 @@ abstract final class AwesomeSnackbar {
         String? title,
         AwesomeOptions? options,
       }) =>
-      show(
-        _merge(options,
-            type: AwesomeType.error, message: message, title: title),
-      );
+      show(_merge(options,
+          type: AwesomeType.error, message: message, title: title));
 
   /// Show a warning notification.
   static String warning(
@@ -77,10 +77,8 @@ abstract final class AwesomeSnackbar {
         String? title,
         AwesomeOptions? options,
       }) =>
-      show(
-        _merge(options,
-            type: AwesomeType.warning, message: message, title: title),
-      );
+      show(_merge(options,
+          type: AwesomeType.warning, message: message, title: title));
 
   /// Show an info notification.
   static String info(
@@ -88,9 +86,8 @@ abstract final class AwesomeSnackbar {
         String? title,
         AwesomeOptions? options,
       }) =>
-      show(
-        _merge(options, type: AwesomeType.info, message: message, title: title),
-      );
+      show(_merge(options,
+          type: AwesomeType.info, message: message, title: title));
 
   /// Show a persistent loading notification; returns its [id].
   ///
@@ -111,14 +108,22 @@ abstract final class AwesomeSnackbar {
   static String show(AwesomeOptions options) {
     final id = _generateId();
 
-    // Duplicate prevention
+    // Duplicate prevention — same key already active or queued → skip.
     final dedupeKey = options.key;
-    if (dedupeKey != null && _keys.contains(dedupeKey)) return '';
-    if (dedupeKey != null) _keys.add(dedupeKey);
+    if (dedupeKey != null && _keyToId.containsKey(dedupeKey)) return '';
+    if (dedupeKey != null) _keyToId[dedupeKey] = id;
 
+    // History record (queued notifications are recorded immediately).
+    if (_config.enableHistory) {
+      AwesomeHistory.instance.add(
+        AwesomeRecord(id: id, options: options, shownAt: DateTime.now()),
+      );
+    }
+
+    _triggerHaptic(options.haptic ?? _config.defaultHaptic);
+
+    // Priority insertion into queue.
     final entry = _QueueEntry(id: id, options: options);
-
-    // Priority insertion
     switch (options.priority) {
       case AwesomePriority.critical:
         _queue.insert(0, entry);
@@ -130,28 +135,12 @@ abstract final class AwesomeSnackbar {
         _queue.add(entry);
     }
 
-    // History
-    if (_config.enableHistory) {
-      AwesomeHistory.instance.add(
-        AwesomeRecord(id: id, options: options, shownAt: DateTime.now()),
-      );
-    }
-
-    _triggerHaptic(options.haptic ?? _config.defaultHaptic);
+    // Only promote to active if nothing is currently showing or exiting.
     _processQueue();
     return id;
   }
 
   /// Await a [Future] and show loading / success / error notifications automatically.
-  ///
-  /// ```dart
-  /// await AwesomeSnackbar.future(
-  ///   future: uploadFile(),
-  ///   loading: "Uploading...",
-  ///   success: "Done! 🎉",
-  ///   error: "Upload failed.",
-  /// );
-  /// ```
   static Future<T?> future<T>({
     required Future<T> future,
     required String loading,
@@ -162,12 +151,8 @@ abstract final class AwesomeSnackbar {
     AwesomeOptions? errorOptions,
   }) async {
     final loadId = show(
-      _merge(
-        loadingOptions,
-        type: AwesomeType.loading,
-        message: loading,
-        persistent: true,
-      ),
+      _merge(loadingOptions,
+          type: AwesomeType.loading, message: loading, persistent: true),
     );
     try {
       final result = await future;
@@ -189,9 +174,7 @@ abstract final class AwesomeSnackbar {
 
   // ─── Scheduling ──────────────────────────────────────────────────────────
 
-  /// Show a notification after [delay].
-  ///
-  /// Returns a schedule ID; cancel with [cancelScheduled].
+  /// Show a notification after [delay]. Returns a schedule ID.
   static String schedule({
     required Duration delay,
     required AwesomeOptions options,
@@ -212,71 +195,89 @@ abstract final class AwesomeSnackbar {
 
   // ─── Dismissal ───────────────────────────────────────────────────────────
 
-  /// Dismiss a specific notification by [id].
+  /// Dismiss the currently visible notification by [id].
   static void dismissById(String id) {
-    _active[id]?.dismiss();
-    _active.remove(id);
-    _keys.removeWhere((k) {
-      // remove dedupe key associated with this id if any
-      return false; // key tracking is per-options.key, not per-id; leave as-is
-    });
-    _processQueue();
-    if (_config.enableHistory) AwesomeHistory.instance.markDismissed(id);
+    if (_current?.id == id) {
+      _current?.dismiss();
+      // Cleanup happens in unregisterActive() after exit animation finishes.
+    } else {
+      // It may still be in the queue — remove it there.
+      _queue.removeWhere((e) => e.id == id);
+      final dedupeKey = _current?.options.key;
+      if (dedupeKey != null) _keyToId.remove(dedupeKey);
+    }
   }
 
-  /// Dismiss all visible notifications immediately.
+  /// Dismiss the currently visible notification and clear the entire queue.
   static void dismissAll() {
-    for (final entry in _active.values) {
-      entry.dismiss();
-    }
-    _active.clear();
     _queue.clear();
-    _keys.clear();
+    _current?.dismiss();
+    // _current and _keyToId cleaned up in unregisterActive()
   }
 
   /// Dismiss all notifications belonging to [groupKey].
   static void dismissGroup(String groupKey) {
-    final ids = _active.entries
-        .where((e) => e.value.options.groupKey == groupKey)
-        .map((e) => e.key)
-        .toList();
-    for (final id in ids) {
-      dismissById(id);
+    _queue.removeWhere((e) => e.options.groupKey == groupKey);
+    if (_current?.options.groupKey == groupKey) {
+      _current?.dismiss();
     }
   }
 
-  // ─── Internal ────────────────────────────────────────────────────────────
+  // ─── Internal API ────────────────────────────────────────────────────────
 
+  /// Promote the next queued item to active — ONLY when nothing is on screen
+  /// and nothing is in the middle of its exit animation.
   static void _processQueue() {
-    final maxV = _config.maxVisible;
-    while (_active.length < maxV && _queue.isNotEmpty) {
-      final entry = _queue.removeAt(0);
-      // Register as active with a no-op dismiss — the real dismiss comes from
-      // the widget via [registerActive] / [unregisterActive].
-      AwesomeSnackbar._active[entry.id] =
-          _ActiveEntry(id: entry.id, options: entry.options, dismiss: () {});
-      AwesomeController._instance._emit(
-        AwesomeShowEvent(id: entry.id, options: entry.options),
+    if (_current != null) return; // something is still visible
+    if (_isExiting) return;       // exit animation in progress
+    if (_queue.isEmpty) return;
+
+    final entry = _queue.removeAt(0);
+    _current = _ActiveEntry(
+      id: entry.id,
+      options: entry.options,
+      dismiss: () {}, // real callback registered via registerActive()
+    );
+
+    AwesomeController._instance._emit(
+      AwesomeShowEvent(id: entry.id, options: entry.options),
+    );
+  }
+
+  /// Called by the widget to register its dismiss callback once it mounts.
+  static void registerActive(String id, VoidCallback dismiss) {
+    if (_current?.id == id) {
+      _current = _ActiveEntry(
+        id: _current!.id,
+        options: _current!.options,
+        dismiss: dismiss,
       );
     }
   }
 
-  /// Called by the widget to register its dismiss callback.
-  static void registerActive(String id, VoidCallback dismiss) {
-    final existing = _active[id];
-    if (existing != null) {
-      _active[id] =
-          _ActiveEntry(id: existing.id, options: existing.options, dismiss: dismiss);
+  /// Called by the widget AFTER the exit animation fully completes.
+  /// This is the only place state is cleaned up, guaranteeing the next
+  /// notification is shown only once the previous one is completely gone.
+  static void unregisterActive(String id) {
+    if (_current?.id == id) {
+      final dedupeKey = _current!.options.key;
+      if (dedupeKey != null) _keyToId.remove(dedupeKey);
+
+      if (_config.enableHistory) {
+        AwesomeHistory.instance.markDismissed(id);
+      }
+
+      _current = null;
+      _isExiting = false;
     }
+    // Promote the next item now that the screen is clear.
+    _processQueue();
   }
 
-  /// Called by the widget when a notification finishes its exit animation.
-  static void unregisterActive(String id) {
-    _active.remove(id);
-    // Also remove dedupe key so the same key can be shown again later.
-    final key = _active[id]?.options.key;
-    if (key != null) _keys.remove(key);
-    _processQueue();
+  /// Called by the widget at the START of its exit animation so we block
+  /// queue promotion until the animation is done.
+  static void markExiting(String id) {
+    if (_current?.id == id) _isExiting = true;
   }
 
   static String _generateId() =>
@@ -369,7 +370,7 @@ class _ActiveEntry {
   final VoidCallback dismiss;
 }
 
-// ─── Shared stream bridge (single source of truth) ───────────────────────────
+// ─── Shared stream bridge ────────────────────────────────────────────────────
 
 /// Event emitted when a notification should be displayed.
 class AwesomeShowEvent {
@@ -378,10 +379,7 @@ class AwesomeShowEvent {
   final AwesomeOptions options;
 }
 
-/// Singleton stream controller shared between [AwesomeSnackbar] and
-/// [AwesomeWidget]. This fixes the previous split-definition bug where
-/// `emit()` lived in one file and `stream` lived in the other, meaning
-/// notifications were enqueued but never rendered.
+/// Singleton stream controller shared between [AwesomeSnackbar] and [AwesomeWidget].
 class AwesomeController {
   AwesomeController._();
   static final AwesomeController _instance = AwesomeController._();
@@ -390,9 +388,7 @@ class AwesomeController {
   StreamController<AwesomeShowEvent>.broadcast();
 
   Stream<AwesomeShowEvent> get stream => _ctrl.stream;
-
   void _emit(AwesomeShowEvent event) => _ctrl.add(event);
 
-  /// Exposed so [AwesomeWidget] can subscribe.
   static Stream<AwesomeShowEvent> get events => _instance.stream;
 }

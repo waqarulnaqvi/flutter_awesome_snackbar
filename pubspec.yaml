@@ -2,7 +2,7 @@ name: flutter_awesome_snackbar
 description: >-
   Beautiful Flutter snackbars with queues, priorities, haptics, scheduling,
   history, glassmorphism, and RTL. Zero dependencies. Pure Flutter.
-version: 1.0.4
+version: 1.0.5
 homepage: https://github.com/waqarulnaqvi/flutter_awesome_snackbar
 repository: https://github.com/waqarulnaqvi/flutter_awesome_snackbar
 issue_tracker: https://github.com/waqarulnaqvi/flutter_awesome_snackbar/issues
