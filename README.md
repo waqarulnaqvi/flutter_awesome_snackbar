@@ -50,7 +50,7 @@ The most powerful, beautiful, and developer-friendly Flutter notification packag
 
 ```yaml
 dependencies:
-  flutter_awesome_snackbar: ^1.0.3
+  flutter_awesome_snackbar: ^1.0.8
 ```
 
 ```sh
@@ -204,6 +204,35 @@ AwesomeSnackbar.configure(AwesomeConfig(
   defaultHaptic: AwesomeHaptic.light,
 ));
 ```
+
+> **⚠️ Platform permissions for `AwesomeHaptic.vibrate`**
+>
+> `AwesomeHaptic.vibrate` calls Flutter's `HapticFeedback.vibrate()`, which maps to
+> a long/strong vibration on the device motor (as opposed to the short taptic-engine
+> pulses used by `light`, `medium`, `heavy`, `success`, `warning`, and `error`).
+> Depending on the platform, the host app may need to declare a permission before
+> the OS will honour the call:
+>
+> **Android** — Add the `VIBRATE` permission to
+> `android/app/src/main/AndroidManifest.xml`:
+> ```xml
+> <uses-permission android:name="android.permission.VIBRATE"/>
+> ```
+> Without this, `HapticFeedback.vibrate()` is silently ignored on Android.
+>
+> **iOS** — No permission or entitlement is required. `HapticFeedback.vibrate()`
+> is routed through the Taptic Engine and works out of the box on all supported
+> devices (iPhone 7+).
+>
+> **Web** — The [Vibration API](https://developer.mozilla.org/en-US/docs/Web/API/Vibration_API)
+> is used under the hood. No permission declaration is needed, but browser support
+> varies: it is supported in Chrome/Edge/Firefox on Android; it is **not supported**
+> in Safari (desktop or iOS) or Firefox on desktop. On unsupported browsers the call
+> is silently ignored — no error is thrown.
+>
+> All other `AwesomeHaptic` values (`light`, `medium`, `heavy`, `success`,
+> `warning`, `error`) use short Taptic Engine pulses and require no platform
+> permissions on any supported platform.
 
 ### Scheduling & delayed notifications
 

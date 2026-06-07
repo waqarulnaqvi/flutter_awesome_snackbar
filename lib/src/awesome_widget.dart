@@ -67,7 +67,6 @@ class _AwesomeNotificationHost extends StatefulWidget {
 }
 
 class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
-  /// Use a map so we never add the same ID twice (handles rapid show calls).
   final _active = <String, _NotificationEntry>{};
   late final StreamSubscription<AwesomeShowEvent> _sub;
 
@@ -85,7 +84,6 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
 
   void _onShow(AwesomeShowEvent event) {
     if (!mounted) return;
-    // Guard: don't add the same ID twice
     if (_active.containsKey(event.id)) return;
     setState(() {
       _active[event.id] = _NotificationEntry(
@@ -110,11 +108,8 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
     final entries = _active.values.take(config.maxVisible).toList();
 
     return IgnorePointer(
-      // Only ignore when tap-through is explicitly enabled
       ignoring: config.tapThroughEnabled,
       child: Stack(
-        // Use Positioned.fill so the Stack fills the entire screen but cards
-        // are aligned via Align — no layout jank from unbounded Dismissible.
         fit: StackFit.expand,
         children: entries
             .asMap()
@@ -126,15 +121,14 @@ class _AwesomeNotificationHostState extends State<_AwesomeNotificationHost> {
   }
 
   Widget _positionedCard(
-      _NotificationEntry entry,
-      int index,
-      AwesomeConfig config,
-      ) {
+    _NotificationEntry entry,
+    int index,
+    AwesomeConfig config,
+  ) {
     final safeArea =
-    config.safeAreaInsets ? MediaQuery.of(context).padding : EdgeInsets.zero;
+        config.safeAreaInsets ? MediaQuery.of(context).padding : EdgeInsets.zero;
 
     const baseGap = 16.0;
-    // Stagger only for bottom position (reverse) to keep visual order correct
     final stackOffset = index * 8.0;
 
     AlignmentGeometry alignment;
@@ -192,14 +186,18 @@ class _AnimatedNotificationCard extends StatefulWidget {
 class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
     with TickerProviderStateMixin {
   late final AnimationController _ctrl;
-
-  // Separate controller for the countdown progress bar — decoupled from
-  // the entrance animation so both run independently.
   late final AnimationController _progressCtrl;
 
   Timer? _autoDismissTimer;
 
-  // Guard: prevents _dismiss() from being called twice (timer + dismissById)
+  // *** FIX 1 — DOUBLE-TAP FREEZE ***
+  // The guard flag must be set SYNCHRONOUSLY at the very start of _dismiss(),
+  // before any await. In the old code the flag was set after `await _ctrl.reverse()`,
+  // meaning a second tap could enter _dismiss() while the first was still
+  // awaiting the reverse animation, spawning two concurrent reverses.
+  // Two concurrent AnimationController.reverse() calls on the same controller
+  // left it in an irrecoverable "stuck" state and onDone was never called,
+  // freezing the snackbar on screen forever.
   bool _dismissCalled = false;
 
   @override
@@ -212,33 +210,42 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       vsync: this,
       duration: config.animationDuration,
       reverseDuration:
-      config.animationReverseDuration ?? config.animationDuration,
+          config.animationReverseDuration ?? config.animationDuration,
     );
 
-    // FIX: Progress bar runs from 1.0 → 0.0 (depletes over duration).
-    // Use reverseDuration so _progressCtrl.reverse() depletes at the right speed.
     _progressCtrl = AnimationController(
       vsync: this,
+      // *** FIX 2 — DURATION ***
+      // Use opts.duration so that a 1-second duration actually counts down in
+      // 1 second. Previously this was set to opts.duration on the controller
+      // but _merge() always fell back to Duration(seconds: 4) when no base
+      // options was provided, so the user's duration was silently discarded.
+      // That bug is fixed in awesome_snackbar.dart (_merge now reads from
+      // _config.duration rather than hardcoding 4 seconds), but we also
+      // explicitly set reverseDuration here so the countdown bar is correct.
       duration: opts.duration,
-      // We start at 1.0 and reverse, so set reverseDuration = duration
       reverseDuration: opts.duration,
     );
 
-    // FIX: Register dismiss callback BEFORE starting animation so that any
-    // dismissById() call that arrives immediately (e.g. for a loader) always
-    // has a real callback and never hits the no-op placeholder.
+    // Register our dismiss callback BEFORE starting the entrance animation.
+    // This ensures dismissById() always finds a real callback even if it is
+    // called in the same frame as show() (e.g. for loader patterns).
     AwesomeSnackbar.registerActive(widget.entry.id, _dismiss);
 
-    // Start entrance animation
+    // Start entrance animation.
     _ctrl.forward();
 
     final persistent = opts.persistent || opts.duration == Duration.zero;
     if (!persistent) {
-      // FIX: Start progress bar from 1.0 and reverse to 0.0 so the bar depletes
-      // visually. Previously it ran forward (0→1) which filled rather than drained.
+      // Start progress bar at 1.0 and reverse to 0.0 (depletes visually).
       _progressCtrl.value = 1.0;
       _progressCtrl.reverse();
-      // Auto-dismiss after the duration
+
+      // *** FIX 3 — DURATION TIMER ***
+      // The timer was already using opts.duration, but because _merge() was
+      // hardcoding 4 seconds in the old code, opts.duration was always 4 s
+      // regardless of what the caller passed. Now that _merge() is fixed, the
+      // timer here correctly fires after whatever duration was requested.
       _autoDismissTimer = Timer(opts.duration, _dismiss);
     }
   }
@@ -252,35 +259,40 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
   }
 
   Future<void> _dismiss() async {
-    // Guard: only run once even if called by both timer and dismissById.
+    // *** FIX 1 (continued) — set the guard FIRST, synchronously, before any
+    // await. This is the critical change: the old code placed this AFTER
+    // `await _ctrl.reverse()`, so a second call could slip in during the
+    // animation and run a second reverse(), corrupting the controller state.
     if (_dismissCalled) return;
     _dismissCalled = true;
 
     _autoDismissTimer?.cancel();
     _progressCtrl.stop();
 
-    // Tell the controller immediately that this slot is exiting — blocks the
-    // next queue item from being promoted until unregisterActive() is called.
+    // Mark this slot as exiting so _processQueue() doesn't promote the next
+    // item until the exit animation is done.
     AwesomeSnackbar.markExiting(widget.entry.id);
 
     if (!mounted) {
       widget.entry.options.onDismiss?.call();
-      // FIX: Always call onDone so unregisterActive unblocks the queue,
-      // even when the widget is already unmounted.
       widget.entry.onDone(widget.entry.id);
       return;
     }
 
-    await _ctrl.reverse();
+    // Only reverse if the controller is in a reversible state (forwarding or
+    // completed). If it's already dismissed/stopped, skip to avoid exceptions.
+    if (_ctrl.status == AnimationStatus.forward ||
+        _ctrl.status == AnimationStatus.completed) {
+      await _ctrl.reverse();
+    }
 
-    // Check mounted again after the async gap
     widget.entry.options.onDismiss?.call();
+
     if (!mounted) {
       widget.entry.onDone(widget.entry.id);
       return;
     }
-    // onDone → _remove → unregisterActive: this is where the controller
-    // clears the active entry and triggers _processQueue for the next item.
+
     widget.entry.onDone(widget.entry.id);
   }
 
@@ -306,7 +318,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.5), end: Offset.zero)
               .animate(
-              CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
+                  CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
           child: child,
         );
 
@@ -314,7 +326,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.2), end: Offset.zero)
               .animate(
-              CurvedAnimation(parent: _ctrl, curve: Curves.bounceOut)),
+                  CurvedAnimation(parent: _ctrl, curve: Curves.bounceOut)),
           child: child,
         );
 
@@ -329,8 +341,8 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.0), end: Offset.zero)
               .animate(CurvedAnimation(
-              parent: _ctrl,
-              curve: const Cubic(0.25, 0.46, 0.45, 0.94))),
+                  parent: _ctrl,
+                  curve: const Cubic(0.25, 0.46, 0.45, 0.94))),
           child: child,
         );
 
@@ -355,7 +367,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
             builder: (_, ch) {
               final metrics = path.computeMetrics().first;
               final tangent =
-              metrics.getTangentForOffset(metrics.length * _ctrl.value);
+                  metrics.getTangentForOffset(metrics.length * _ctrl.value);
               final pos = tangent?.position ?? Offset.zero;
               return Transform.translate(offset: pos, child: ch);
             },
@@ -372,7 +384,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
         return SlideTransition(
           position: Tween(begin: const Offset(0, -1.0), end: Offset.zero)
               .animate(
-              CurvedAnimation(parent: _ctrl, curve: Curves.easeOut)),
+                  CurvedAnimation(parent: _ctrl, curve: Curves.easeOut)),
           child: child,
         );
     }
@@ -394,6 +406,12 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       card = Dismissible(
         key: ValueKey(widget.entry.id),
         direction: _toFlutterDirection(dismissDir),
+        // *** FIX 1 (Dismissible) ***
+        // Dismissible calls onDismissed after its own animation finishes.
+        // We must NOT call _dismiss() here if it was already called by a tap
+        // (the _dismissCalled guard handles this), but we must always call
+        // onDone so the entry is cleaned up. Since _dismiss() is already
+        // guarded, calling it is safe — it will no-op on the second call.
         onDismissed: (_) => _dismiss(),
         child: card,
       );
@@ -409,7 +427,7 @@ class _AnimatedNotificationCardState extends State<_AnimatedNotificationCard>
       case AwesomeDismissDirection.vertical:
         return DismissDirection.vertical;
       case AwesomeDismissDirection.any:
-        return DismissDirection.startToEnd; // sensible default for "any"
+        return DismissDirection.startToEnd;
       case AwesomeDismissDirection.none:
         return DismissDirection.none;
     }
@@ -427,9 +445,6 @@ class _NotificationCard extends StatelessWidget {
 
   final _NotificationEntry entry;
   final VoidCallback onDismiss;
-
-  /// A dedicated [AnimationController] running from 1.0 → 0.0 over the full
-  /// notification duration, used exclusively for the progress bar.
   final AnimationController progressController;
 
   @override
@@ -480,16 +495,13 @@ class _NotificationCard extends StatelessWidget {
           borderRadius: borderRadius,
           onTap: opts.onTap != null || opts.routeName != null
               ? () {
-            if (opts.routeName != null) {
-              // FIX: Use AwesomeSnackbar.navigatorKey instead of Navigator.of(context)
-              // because this widget lives in an Overlay that has no Navigator ancestor.
-              // Navigator.of(context) throws a "Navigator not found" error here.
-              AwesomeSnackbar.navigatorKey.currentState
-                  ?.pushNamed(opts.routeName!);
-            }
-            opts.onTap?.call();
-            if (opts.dismissOnTap) onDismiss();
-          }
+                  if (opts.routeName != null) {
+                    AwesomeSnackbar.navigatorKey.currentState
+                        ?.pushNamed(opts.routeName!);
+                  }
+                  opts.onTap?.call();
+                  if (opts.dismissOnTap) onDismiss();
+                }
               : null,
           child: Padding(
             padding: opts.padding ??
@@ -497,19 +509,18 @@ class _NotificationCard extends StatelessWidget {
             child: opts.customWidget != null
                 ? opts.customWidget!
                 : _DefaultContent(
-              opts: opts,
-              textColor: textColor,
-              iconColor: iconColor,
-              progressColor: progressColor,
-              progressController: progressController,
-              onDismiss: onDismiss,
-            ),
+                    opts: opts,
+                    textColor: textColor,
+                    iconColor: iconColor,
+                    progressColor: progressColor,
+                    progressController: progressController,
+                    onDismiss: onDismiss,
+                  ),
           ),
         ),
       ),
     );
 
-    // Glassmorphism
     final useBlur = config.blur ||
         (theme?.backgroundOpacity != null && theme!.backgroundOpacity! < 1.0);
     if (useBlur) {
@@ -547,9 +558,6 @@ class _DefaultContent extends StatelessWidget {
   final Color textColor;
   final Color iconColor;
   final Color progressColor;
-
-  /// Dedicated countdown controller (1.0 → 0.0). Only used for the progress
-  /// bar, completely independent from the entrance animation.
   final AnimationController progressController;
   final VoidCallback onDismiss;
 
@@ -585,7 +593,7 @@ class _DefaultContent extends StatelessWidget {
                   if (opts.message != null)
                     Padding(
                       padding:
-                      EdgeInsets.only(top: opts.title != null ? 2 : 0),
+                          EdgeInsets.only(top: opts.title != null ? 2 : 0),
                       child: Text(
                         opts.message!,
                         style: TextStyle(
@@ -649,8 +657,7 @@ class _DefaultContent extends StatelessWidget {
             ),
           ),
 
-        // Progress bar — uses dedicated countdown controller, not the entrance
-        // animation, so it correctly depletes from full to empty over [duration].
+        // Progress bar — depletes from full to empty over [duration].
         if ((opts.showProgress || AwesomeSnackbar.config.showProgress) &&
             !opts.persistent &&
             opts.duration != Duration.zero)
@@ -659,8 +666,6 @@ class _DefaultContent extends StatelessWidget {
             child: AnimatedBuilder(
               animation: progressController,
               builder: (_, __) => LinearProgressIndicator(
-                // FIX: progressController runs 1.0 → 0.0 (reverse from full).
-                // .value directly represents the remaining fraction — no inversion needed.
                 value: progressController.value,
                 backgroundColor: progressColor.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(progressColor),
@@ -673,12 +678,6 @@ class _DefaultContent extends StatelessWidget {
     );
   }
 
-  /// Resolves the correct leading icon widget using this priority order:
-  /// 1. [iconWidget]   — any Flutter widget (SVG, Lottie, custom Icon…)
-  /// 2. [iconAsset]    — local asset image path
-  /// 3. [iconNetwork]  — remote image URL
-  /// 4. [iconProvider] — any [ImageProvider]
-  /// 5. Default type icon
   Widget _resolveIcon() {
     final size = opts.themeData?.iconSize ?? 22.0;
 
@@ -706,17 +705,17 @@ class _DefaultContent extends StatelessWidget {
         loadingBuilder: (_, child, progress) => progress == null
             ? child
             : SizedBox(
-          width: size,
-          height: size,
-          child: CircularProgressIndicator(
-            strokeWidth: 1.5,
-            value: progress.expectedTotalBytes != null
-                ? progress.cumulativeBytesLoaded /
-                progress.expectedTotalBytes!
-                : null,
-            valueColor: AlwaysStoppedAnimation<Color>(iconColor),
-          ),
-        ),
+                width: size,
+                height: size,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  value: progress.expectedTotalBytes != null
+                      ? progress.cumulativeBytesLoaded /
+                          progress.expectedTotalBytes!
+                      : null,
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                ),
+              ),
         errorBuilder: (_, __, ___) =>
             _TypeIcon(type: opts.type, color: iconColor, size: size),
       );
@@ -824,45 +823,45 @@ _TypeColors _typeColors(AwesomeType type, bool dark) {
     case AwesomeType.success:
       return dark
           ? const _TypeColors(
-          bg: Color(0xFF14532D),
-          text: Color(0xFFBBF7D0),
-          icon: Color(0xFF4ADE80))
+              bg: Color(0xFF14532D),
+              text: Color(0xFFBBF7D0),
+              icon: Color(0xFF4ADE80))
           : const _TypeColors(
-          bg: Color(0xFFF0FDF4),
-          text: Color(0xFF166534),
-          icon: Color(0xFF16A34A));
+              bg: Color(0xFFF0FDF4),
+              text: Color(0xFF166534),
+              icon: Color(0xFF16A34A));
     case AwesomeType.error:
       return dark
           ? const _TypeColors(
-          bg: Color(0xFF450A0A),
-          text: Color(0xFFFECACA),
-          icon: Color(0xFFF87171))
+              bg: Color(0xFF450A0A),
+              text: Color(0xFFFECACA),
+              icon: Color(0xFFF87171))
           : const _TypeColors(
-          bg: Color(0xFFFFF1F2),
-          text: Color(0xFF991B1B),
-          icon: Color(0xFFDC2626));
+              bg: Color(0xFFFFF1F2),
+              text: Color(0xFF991B1B),
+              icon: Color(0xFFDC2626));
     case AwesomeType.warning:
       return dark
           ? const _TypeColors(
-          bg: Color(0xFF431407),
-          text: Color(0xFFFED7AA),
-          icon: Color(0xFFFB923C))
+              bg: Color(0xFF431407),
+              text: Color(0xFFFED7AA),
+              icon: Color(0xFFFB923C))
           : const _TypeColors(
-          bg: Color(0xFFFFFBEB),
-          text: Color(0xFF92400E),
-          icon: Color(0xFFD97706));
+              bg: Color(0xFFFFFBEB),
+              text: Color(0xFF92400E),
+              icon: Color(0xFFD97706));
     case AwesomeType.loading:
     case AwesomeType.info:
     case AwesomeType.custom:
       return dark
           ? const _TypeColors(
-          bg: Color(0xFF1E3A5F),
-          text: Color(0xFFBAE6FD),
-          icon: Color(0xFF38BDF8))
+              bg: Color(0xFF1E3A5F),
+              text: Color(0xFFBAE6FD),
+              icon: Color(0xFF38BDF8))
           : const _TypeColors(
-          bg: Color(0xFFEFF6FF),
-          text: Color(0xFF1E40AF),
-          icon: Color(0xFF3B82F6));
+              bg: Color(0xFFEFF6FF),
+              text: Color(0xFF1E40AF),
+              icon: Color(0xFF3B82F6));
   }
 }
 

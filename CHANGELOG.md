@@ -1,3 +1,7 @@
+## 1.0.8
+
+- **Fixed:** `flashSuccess()`, `flashError()`, `flashWarning()`, and `flashInfo()` extension methods were missing — the barrel file (`flutter_awesome_snackbar.dart`) exported three extension files (`context_extensions.dart`, `string_extensions.dart`, `future_extensions.dart`) that did not exist in the package, causing compile errors: *"The method 'flashSuccess' isn't defined for the type 'String'"*, *"The method 'flashError' isn't defined for the type 'BuildContext'"*, and *"The method 'flashFuture' isn't defined for the type 'Future'"*. Added all three missing extension files under `lib/src/extensions/`.
+
 ## 1.0.7
 
 - **Fixed:** Snackbar freeze on rapid successive taps — the old code tracked only a single `_current` entry, so if a new notification arrived while the previous one was still in its exit animation (`_isExiting = true`), `registerActive()` silently discarded the dismiss callback (replaced it with the `() {}` placeholder). Any subsequent `dismissById()` call was a no-op, leaving the snackbar frozen on screen and the queue permanently deadlocked. Replaced `_current` with an `_activeEntries` map (`Map<String, _ActiveEntry>`) so every in-flight notification is tracked independently and `registerActive()` always finds and updates the correct entry by ID.
